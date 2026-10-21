@@ -64,30 +64,49 @@ $$('[data-partner]').forEach((button)=>button.addEventListener('click',()=>{
   $('#partner-category').textContent=partner.category;$('#partner-title').textContent=partner.title;$('#partner-gives').textContent=partner.gives;$('#partner-gets').textContent=partner.gets;
 }));
 function calculate(){
-  const values=['cost','sponsor','price','fees','capacity','comps'].map((id)=>Number($('#'+id).value));
-  const fields=['cost','sponsor','price','fees','capacity','comps'].map((id)=>$('#'+id));
-  const invalid=fields.some((input)=>input.value===''||!input.validity.valid);
-  const [cost,sponsor,price,fees,capacity,comps]=values;
+  const budgetFields=$$('.budget-item');
+  const budgetInvalid=budgetFields.some((input)=>input.value===''||!input.validity.valid);
+  const fixedCents=budgetFields.reduce((sum,input)=>sum+Math.round(Number(input.value)*100),0);
+  const currency=(cents)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:0,maximumFractionDigits:2}).format(cents/100);
+  $('#cost').value=budgetInvalid?'':(fixedCents/100).toFixed(2);
+  $('#budget-total').textContent=budgetInvalid?'—':currency(fixedCents);
+  const ids=['sponsor','price','fees','attendance','capacity','comps'];
+  const fields=ids.map((id)=>$('#'+id));
+  const invalid=budgetInvalid||fields.some((input)=>input.value===''||!input.validity.valid);
+  const [sponsor,price,fees,attendance,capacity,comps]=fields.map((input)=>Number(input.value));
   const message=$('#calc-message');
-  message.classList.remove('warning');
-  if(invalid || comps>capacity){
-    $('#break-even').textContent='—';$('#capacity-note').textContent='Check the planning inputs.';$('#sellout-profit').textContent='—';
-    message.textContent=comps>capacity?'Complimentary places cannot exceed guest capacity.':'Enter valid, nonnegative amounts and whole-number guest counts.';
+  const results=$('.calc-results');
+  message.classList.remove('warning');results.classList.remove('is-loss');
+  if(invalid || comps>capacity || attendance>capacity-comps){
+    ['break-even','sellout-profit','gross-door','total-revenue','all-costs','projected-profit','profit-margin'].forEach((id)=>{$('#'+id).textContent='—';});
+    $('#capacity-note').textContent='Check the planning inputs.';
+    message.textContent=invalid?'Enter valid, nonnegative amounts and whole-number guest counts.':comps>capacity?'Complimentary places cannot exceed guest capacity.':'Expected paying guests exceed capacity after complimentary places. Adjust attendance, capacity, or complimentary places.';
     message.classList.add('warning');return;
   }
-  const net=price-fees,remaining=Math.max(0,cost-sponsor),paid=capacity-comps;
-  const attendance=remaining===0?0:net>0?Math.ceil(remaining/net):null;
-  const result=paid*net+sponsor-cost;
-  $('#break-even').textContent=attendance===null?'—':attendance.toLocaleString('en-US');
-  $('#capacity-note').textContent=`Of ${paid.toLocaleString('en-US')} available paid places`;
-  const money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(Math.abs(result));
-  $('#sellout-profit').textContent=`${money} ${result<0?'shortfall':'surplus'}`;
-  if(net<=0){message.textContent=remaining>0?'Ticket revenue cannot cover the gap at this price and deduction level.':'Cash support covers fixed costs, but these tickets add no positive contribution.';message.classList.add('warning');}
-  else if(attendance>paid){message.textContent='Break-even exceeds paid ticket inventory. Adjust costs, confirmed support, or ticket contribution.';message.classList.add('warning');}
-  else if(remaining===0){message.textContent='Confirmed cash support covers the entered event costs.';}
-  else{message.textContent='Break-even fits within the proposed ticket inventory.';}
+  const priceCents=Math.round(price*100),feeCents=Math.round(fees*100),supportCents=Math.round(sponsor*100);
+  const netCents=priceCents-feeCents,remainingCents=Math.max(0,fixedCents-supportCents),paidCapacity=capacity-comps;
+  const breakEven=remainingCents===0?0:netCents>0?Math.ceil(remainingCents/netCents):null;
+  const doorCents=attendance*priceCents,revenueCents=doorCents+supportCents;
+  const expenseCents=fixedCents+attendance*feeCents,profitCents=revenueCents-expenseCents;
+  const selloutCents=paidCapacity*netCents+supportCents-fixedCents;
+  $('#break-even').textContent=breakEven===null?'Not reachable':breakEven.toLocaleString('en-US');
+  $('#capacity-note').textContent=`${attendance.toLocaleString('en-US')} expected paying guests / ${paidCapacity.toLocaleString('en-US')} available paid places`;
+  $('#projected-profit').textContent=currency(profitCents);
+  $('#sellout-profit').textContent=currency(selloutCents);
+  $('#gross-door').textContent=currency(doorCents);
+  $('#total-revenue').textContent=currency(revenueCents);
+  $('#all-costs').textContent=currency(expenseCents);
+  $('#profit-margin').textContent=revenueCents>0?`${(profitCents/revenueCents*100).toFixed(1)}%`:'— (no revenue)';
+  results.classList.toggle('is-loss',profitCents<0);
+  if(netCents<=0){message.textContent=remainingCents>0?'Door revenue cannot cover the gap at this price and deduction level.':'Modeled cash support covers fixed costs, but paid entries add no positive contribution.';message.classList.add('warning');}
+  else if(breakEven>paidCapacity){message.textContent='Break-even exceeds paid-entry capacity. Adjust costs, cash support, or net admission revenue.';message.classList.add('warning');}
+  else if(profitCents<0){message.textContent=`The current attendance leaves a ${currency(-profitCents)} shortfall. Break-even requires ${breakEven} paid entries.`;message.classList.add('warning');}
+  else if(remainingCents===0){message.textContent='Modeled cash support covers the entered fixed costs.';}
+  else{message.textContent='Expected paid attendance covers the entered costs.';}
 }
-$$('.calc-inputs input').forEach((input)=>input.addEventListener('input',calculate));calculate();
+$$('.calc-inputs input, .budget-item').forEach((input)=>input.addEventListener('input',calculate));
+$('#reset-budget').addEventListener('click',()=>{$$('.calc-inputs input:not([readonly]), .budget-item').forEach((input)=>{input.value=input.defaultValue;});calculate();});
+calculate();
 const chapters=$$('.chapter');let activeChapter=0;const menu=$('#chapter-menu');
 chapters.forEach((chapter,index)=>{
   const link=document.createElement('a');link.href='#'+chapter.id;
