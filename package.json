@@ -1,0 +1,1 @@
+{"name":"room-temp-deck","version":"1.0.0","private":true,"description":"Room Temp — an interactive event concept and partnership deck","scripts":{"check":"node --check script.js"}}
